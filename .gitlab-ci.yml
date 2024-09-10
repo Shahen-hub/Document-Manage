@@ -1,0 +1,56 @@
+stages:
+  - test
+  - build
+  - docker-image-creation
+
+cache:
+  paths:
+    - node_modules/
+
+include:
+  - local: '.gitlab/.document-management.yml'
+
+.base:
+  image:
+    name: ap-singapore-1.ocir.io/informaticscl/sg-edcs-registry:frontend
+    entrypoint: [""]
+  tags: [ edcs, dev, frontend, yarn ]
+
+.frontend-test:
+  extends: .base
+  script: 
+    - yarn test
+
+.frontend-build:                     
+  extends: .base
+  before_script:
+    - dir=$(pwd)
+    - export PATH=$dir/node_modules/.bin:$PATH
+    - export NODE_OPTIONS=--openssl-legacy-provider
+  script: 
+    - echo $PATH
+    - yarn
+    - yarn build
+    - ls -lart  
+  artifacts:                     
+    paths:            
+      - build/
+    expire_in: 1 week
+
+.build-docker:
+  variables:
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: ""
+  services:
+    - name: docker:20.10.17-dind
+      alias: docker
+      command: ["--tls=false"]
+  before_script:
+    - mkdir -p $HOME/.docker
+    - echo $DOCKER_AUTH_CONFIG > $HOME/.docker/config.json
+    - export DOCKER_DRIVER=overlay
+  script:
+    - docker build -t $TAG_LATEST -t $TAG_COMMIT -f Dockerfile .
+    - docker push $TAG_LATEST
+    - docker push $TAG_COMMIT
+  tags: [ edcs, docker-in-docker ]
